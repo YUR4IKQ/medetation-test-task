@@ -1,4 +1,11 @@
-import {View, Text, StyleSheet, TouchableOpacity, Alert} from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import React, {useMemo, useRef, useState} from 'react';
 import {useGetAudioQuery} from '../../services/content';
 import ContentList from '../../components/ContentList';
@@ -7,44 +14,76 @@ import {IAudio} from '../../types/audio';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import TrackPlayer from 'react-native-track-player';
-import useAudioLoader from '../../hooks/useAudioLoader';
+import useDownloadAudio from '../../hooks/useDownloadAudio';
+import useCheckIsAudioDownloaded from '../../hooks/useCheckIsAudioDownloaded';
+import IAudioFromLocalFiles from '../../types/audioFromLocalFiles';
+import RNFS from 'react-native-fs';
 
 const TabScreenAudio = () => {
   const {data, error, isLoading} = useGetAudioQuery();
-  const {checkAndLoadAudio, isDownloading, downloadError} = useAudioLoader();
+  const {loadAudio, isDownloading, downloadError} = useDownloadAudio();
+  const [isAudioDownloaded, setIsAudioDownloaded] =
+    useState<IAudioFromLocalFiles | null>(null);
 
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['1%', '15%', '50%'], []);
   const [selectedAudio, setSelectedAudio] = useState<IAudio | undefined>(
     undefined,
   );
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState<boolean | null>(null);
 
   const handlePressItem = async (id: number) => {
     bottomSheetRef.current?.expand();
+
+    // await RNFS.unlink(isAudioDownloaded?.url!);
     if (data) {
       const audio = data.find(audio => audio.id === id);
 
-      if (audio && selectedAudio !== audio) {
-        const audioFromLocalFiles = await checkIfAudioExistsLocally(audio);
+      playerReset();
+      setSelectedAudio(audio);
 
-        if (!audioFromLocalFiles) {
-          return;
-        } else {
-          setSelectedAudio(audio);
-          loadAndPlayTrack(audioFromLocalFiles);
-          setIsAudioPlaying(true);
+      if (audio && selectedAudio !== audio) {
+        const audioFromLocalFiles = await useCheckIsAudioDownloaded(
+          audio.media.url,
+        );
+
+        if (audioFromLocalFiles) {
+          setIsAudioDownloaded(audioFromLocalFiles);
         }
       }
     }
   };
 
+  const handleDownloadAudio = async () => {
+    if (selectedAudio) {
+      const locaPath = await loadAudio(selectedAudio.media.url);
+
+      if (!locaPath.filePath && locaPath.error) {
+        Alert.alert(locaPath.error.message);
+        return false;
+      }
+
+      if (locaPath.filePath) {
+        setIsAudioDownloaded({
+          isLocalUrl: !!locaPath.filePath,
+          url: locaPath.filePath,
+        });
+        return;
+      }
+    }
+
+    return false;
+  };
+
   const handlePressPlayStop = () => {
-    if (isAudioPlaying) {
-      pause();
+    if (isAudioPlaying === null && selectedAudio) {
+      loadAndPlayTrack(selectedAudio);
+    }
+    if (isAudioPlaying === true) {
+      playerPause();
       setIsAudioPlaying(false);
     } else if (selectedAudio && !isAudioPlaying) {
-      play();
+      playerPlay();
       setIsAudioPlaying(true);
     }
   };
@@ -56,42 +95,26 @@ const TabScreenAudio = () => {
       url: track.media.url,
       title: track.name,
     });
-    play();
+    playerPlay();
   };
 
-  const checkIfAudioExistsLocally = async (audio: IAudio) => {
-    const result = await checkAndLoadAudio(audio);
-    const filePath = result.filePath;
-    const error = result.error;
-  
-    if (!filePath && error) {
-      Alert.alert(error.message);
-      return false;
-    }
-  
-    if (filePath) {
-      const modifiedAudioWithLocalUrl = {
-        ...audio,
-        media: {...audio.media, url: filePath},
-      };
-      return modifiedAudioWithLocalUrl;
-    }
-  
-    return false;
-  };
-
-  const pause = async () => {
+  const playerPause = async () => {
     await TrackPlayer.pause();
   };
 
-  const play = async () => {
+  const playerPlay = async () => {
     await TrackPlayer.play();
+  };
+
+  const playerReset = async () => {
+    setIsAudioPlaying(null);
+    setIsAudioDownloaded(null);
+    await TrackPlayer.reset();
   };
 
   const handleSheetChanges = (index: number) => {
     if (index === 0) {
-      pause();
-      setIsAudioPlaying(false);
+      playerReset();
       setSelectedAudio(undefined);
       bottomSheetRef.current?.close();
     }
@@ -138,15 +161,42 @@ const TabScreenAudio = () => {
                 <Text style={styles.selectedAudioName}>
                   {selectedAudio.name}
                 </Text>
-                <TouchableOpacity
-                  style={{marginRight: 20}}
-                  onPress={handlePressPlayStop}>
-                  {isAudioPlaying ? (
-                    <MaterialIcons name="pause" color="#fff" size={46} />
-                  ) : (
-                    <FontAwesome name="play" color="#fff" size={46} />
-                  )}
-                </TouchableOpacity>
+
+                {!isAudioDownloaded ||
+                  (isDownloading && (
+                    <ActivityIndicator
+                      size={'large'}
+                      color="#fff"
+                      style={
+                        isDownloading ? {marginRight: 0} : {marginRight: 20}
+                      }
+                    />
+                  ))}
+
+                {!isAudioDownloaded?.isLocalUrl && (
+                  <TouchableOpacity
+                    disabled={isDownloading}
+                    style={{marginRight: 20}}
+                    onPress={handleDownloadAudio}>
+                    <FontAwesome
+                      name="cloud-download"
+                      size={46}
+                      color={isDownloading ? '#333' : '#fff'}
+                    />
+                  </TouchableOpacity>
+                )}
+
+                {isAudioDownloaded?.isLocalUrl && (
+                  <TouchableOpacity
+                    style={{marginRight: 20}}
+                    onPress={handlePressPlayStop}>
+                    {isAudioPlaying ? (
+                      <MaterialIcons name="pause" color="#fff" size={46} />
+                    ) : (
+                      <FontAwesome name="play" color="#fff" size={46} />
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
               <Text style={styles.selectedAudioDescription}>
                 {selectedAudio.title}
@@ -205,7 +255,8 @@ const styles = StyleSheet.create({
   },
   bottomSheetDefaultTitle: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '500',
+    textAlign: 'center',
   },
 });

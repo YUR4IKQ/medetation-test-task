@@ -8,7 +8,7 @@ import Audio from '../Audio';
 interface Props {
   data: IArticleModified[] | IAudio[];
   onPressPlay?: (id: number) => void;
-  selectedItemId?: number;
+  selectedItemId?: number | undefined;
 }
 
 const ContentList = ({data, onPressPlay, selectedItemId}: Props): React.JSX.Element => {
