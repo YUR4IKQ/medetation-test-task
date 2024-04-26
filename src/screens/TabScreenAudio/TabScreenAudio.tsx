@@ -17,7 +17,6 @@ import TrackPlayer from 'react-native-track-player';
 import useDownloadAudio from '../../hooks/useDownloadAudio';
 import useCheckIsAudioDownloaded from '../../hooks/useCheckIsAudioDownloaded';
 import IAudioFromLocalFiles from '../../types/audioFromLocalFiles';
-import RNFS from 'react-native-fs';
 
 const TabScreenAudio = () => {
   const {data, error, isLoading} = useGetAudioQuery();
@@ -35,7 +34,6 @@ const TabScreenAudio = () => {
   const handlePressItem = async (id: number) => {
     bottomSheetRef.current?.expand();
 
-    // await RNFS.unlink(isAudioDownloaded?.url!);
     if (data) {
       const audio = data.find(audio => audio.id === id);
 
@@ -49,6 +47,8 @@ const TabScreenAudio = () => {
 
         if (audioFromLocalFiles) {
           setIsAudioDownloaded(audioFromLocalFiles);
+        } else {
+          setIsAudioDownloaded(null);
         }
       }
     }
@@ -108,7 +108,7 @@ const TabScreenAudio = () => {
 
   const playerReset = async () => {
     setIsAudioPlaying(null);
-    setIsAudioDownloaded(null);
+
     await TrackPlayer.reset();
   };
 
@@ -223,6 +223,7 @@ const styles = StyleSheet.create({
   bottomSheetContainer: {
     borderRadius: 20,
     elevation: 4,
+    backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 4,

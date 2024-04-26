@@ -11,7 +11,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ArticleDetails'>;
 
 const ArticleDetails = ({route}: Props): React.JSX.Element => {
   const {article} = route.params;
-  console.log(article);
 
   const htmlContent = useMemo(() => {
     let transformedHtml = article.description.replace(/\n/g, '<br>').replace(/(#####\s*)(.*?)(<br>|<\/br>|$)/g, '<h3>$2</h3>').replace(/!\[\]\((.*?)\)/g, '<img src="$1" alt="Image" />');
